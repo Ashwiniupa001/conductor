@@ -15,6 +15,9 @@ package com.netflix.conductor.dao.cassandra;
 import com.datastax.driver.core.Session;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.netflix.conductor.common.metadata.tasks.Task;
+import com.netflix.conductor.common.metadata.tasks.Task.Status;
+import com.netflix.conductor.common.metadata.tasks.TaskDef;
+import com.netflix.conductor.common.metadata.workflow.WorkflowTask;
 import com.netflix.conductor.common.run.Workflow;
 import com.netflix.conductor.common.utils.JsonMapperProvider;
 import com.netflix.conductor.config.TestConfiguration;
@@ -35,6 +38,7 @@ import java.util.List;
 
 import static com.netflix.conductor.dao.cassandra.CassandraBaseDAO.WorkflowMetadata;
 import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertNotNull;
 import static org.junit.Assert.assertNull;
 import static org.junit.Assert.assertTrue;
@@ -262,5 +266,43 @@ public class CassandraExecutionDAOTest {
         assertNull(foundId);
         foundId = executionDAO.lookupWorkflowIdFromTaskId(task2Id);
         assertNull(foundId);
+    }
+
+    @Test
+    public void testTaskDefLimitCRUD() {
+        String taskDefName = "test_task_def";
+        String taskId = IDGenerator.generate();
+
+        TaskDef taskDef = new TaskDef();
+        taskDef.setConcurrentExecLimit(1);
+        WorkflowTask workflowTask = new WorkflowTask();
+        workflowTask.setTaskDefinition(taskDef);
+
+        Task task = new Task();
+        task.setTaskDefName(taskDefName);
+        task.setTaskId(taskId);
+        task.setWorkflowTask(workflowTask);
+        task.setTaskType("test_task");
+        task.setWorkflowType("test_workflow");
+        task.setStatus(Task.Status.SCHEDULED);
+
+
+        executionDAO.updateTaskDefLimit(task, false);
+        assertFalse(executionDAO.exceedsInProgressLimit(task));
+
+        task.setStatus(Status.IN_PROGRESS);
+        executionDAO.updateTaskDefLimit(task, false);
+        assertTrue(executionDAO.exceedsInProgressLimit(task));
+
+        task.setStatus(Status.COMPLETED);
+        executionDAO.updateTaskDefLimit(task, false);
+        assertFalse(executionDAO.exceedsInProgressLimit(task));
+
+        task.setStatus(Status.IN_PROGRESS);
+        executionDAO.updateTaskDefLimit(task, false);
+        assertTrue(executionDAO.exceedsInProgressLimit(task));
+
+        executionDAO.updateTaskDefLimit(task, true);
+        assertFalse(executionDAO.exceedsInProgressLimit(task));
     }
 }
